@@ -1,0 +1,18 @@
+{
+  "name": "time-series-cache",
+  "version": "1.0.0",
+  "description": "Store, modify, and retrieve time series data in memory.",
+  "main": "./src/time-series-cache",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "via",
+    "trading",
+    "time",
+    "series",
+    "cache"
+  ],
+  "repository": "https://bitbucket.org/via-trading/time-series-cache",
+  "author": "Dakota Gordon"
+}
