@@ -14,5 +14,8 @@
     "cache"
   ],
   "repository": "https://bitbucket.org/via-trading/time-series-cache",
-  "author": "Dakota Gordon"
+  "author": "Dakota Gordon",
+  "dependencies": {
+    "underscore-plus": "^1.6.6"
+  }
 }

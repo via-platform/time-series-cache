@@ -1,221 +1,148 @@
-// const {Emitter, Disposable, CompositeDisposable} = require('event-kit');
-// const _ = require('underscore-plus');
+const _ = require('underscore-plus');
 
 module.exports = class TimeSeriesCache {
-    constructor(params = {}){
-        //TODO make sure incoming query requests are not looking for a finer resolution than this
-        this.resolution = params.resolution;
-        this.source = params.source;
-        this.maxCandlesFromRequest = params.maxCandlesFromRequest;
-        this.skyline = {};
-        this.data = {};
-        this.emitter = new Emitter();
-        this.live = false;
+    constructor({granularity}){
+        this.granularity = granularity;
+        this.data = new Map();
     }
 
-    merge(ranges){
-        if(!ranges.length){
-            return [];
+    add(data){
+        if(Array.isArray(data)){
+            return data.forEach(item => this.add(item));
         }
 
-        let stack = [];
-        ranges.sort((a, b) => a.start - b.start);
-        stack.push(_.first(ranges));
-
-        for(let range of ranges.slice(1)){
-            let top = _.last(stack);
-
-            if (top.end < range.start) {
-                stack.push(range);
-            } else if (top.end < range.end) {
-                top.end = range.end;
-            }
+        if(!data.date){
+            throw new Error('All data points must include a date property.');
         }
 
-        return stack;
+        data.date = this.nearestCandle(data.date);
+        this.data.set(data.date.getTime(), data);
     }
 
-    add(data, granularity){
-        if(!data.length){
-            return;
-        }
+    update(data){
+        let candle = this.candle(data.date);
 
-        for(let datum of data){
-            if(!datum.date){
-                throw new Error('All data points must include a date property.');
+        if(this.data.has(candle)){
+            let value = this.data.get(candle);
+
+            if(data.price){
+                value.close = data.price;
             }
+
+            value.high = Math.max(value.high, value.close);
+            value.low = Math.min(value.low, value.close);
+            //TODO handle the volume adjustment
+        }else{
+            console.log(`There was no candle for date`, candle)
+            //TODO possible save this ticker event for later application, once a candle is added for this date
+            // this.add([{date: candle, low: current.price, high: current.price, open: current.price, close: current.price, volume: 0}]);
+        }
+    }
+
+    has(date){
+        return this.data.has(this.candle(date));
+    }
+
+    available(start, end){
+        let time = this.nearestCandle(start);
+        let endTime = this.nearestCandle(end);
+
+        while(time <= endTime){
+            if(!this.data.has(time)){
+                return false;
+            }
+
+            time.setTime(time.getTime() + this.granularity);
         }
 
-        let start = _.first(data).date;
-        let end = _.last(data).date;
+        return true;
+    }
 
-        if(this.available(start, end, granularity)){
-            return;
-        }
-
-
-        if(!this.skyline.hasOwnProperty(granularity)){
-            this.skyline[granularity] = [];
-        }
-
-        let candles = (this.data[granularity] || []).slice();
+    fetch(start, end){
         let result = [];
 
-        while(candles.length && data.length){
-            let candle = _.first(candles).date;
-            let datum = _.first(data).date;
-
-            if(candle > datum){
-                result.push(data.shift());
-            }else if(datum < candle){
-                result.push(candles.shift());
-            }else{
-                result.push(data.shift());
-                candles.shift();
-            }
-        }
-
-        result = result.concat(candles, data);
-
-        this.data[granularity] = result;
-
-        this.skyline[granularity].push({start, end});
-        this.skyline[granularity] = this.merge(this.skyline[granularity]);
-
-        this.emitter.emit('did-modify-data');
-    }
-
-    available(start, end, granularity){
-        for(let grain of Object.keys(this.skyline).sort()){
-            if(grain <= granularity && granularity % grain === 0){
-                for(let range of this.skyline[grain]){
-                    if(range.start <= start && range.end >= end){
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
-    combine(data, grain, granularity){
-        if(grain === granularity){
-            return data;
-        }
-
-        let factor = granularity / grain;
-        let result = [];
-
-        for(let i = 0; i < data.length; i += factor){
-            let candle = Object.assign(data[i]);
-
-            if(data[i + 1]){
-                candle.close = data[i + 1].close;
-                candle.volume += data[i + 1].volume;
-
-                if(data[i + 1].low < candle.low){
-                    candle.low = data[i + 1];
-                }
-
-                if(data[i + 1].high > candle.high){
-                    candle.high = data[i + 1].high;
-                }
-            }
-
-            if(data[i + 2]){
-                candle.close = data[i + 2].close;
-                candle.volume += data[i + 2].volume;
-
-                if(data[i + 2].low < candle.low){
-                    candle.low = data[i + 2];
-                }
-
-                if(data[i + 2].high > candle.high){
-                    candle.high = data[i + 2].high;
-                }
+        for(let datum of this.data.values()){
+            if(datum.date >= start && datum.date <= end){
+                result.push(datum);
             }
         }
 
         return result;
     }
 
-    fetch(start, end, granularity){
-        return this.data[granularity] ? this.data[granularity].filter(datum => datum.date >= start && datum.date <= end) : [];
-
-        //TODO have this method attempt to recursively fill in gaps in the data
-        // for(let grain of Object.keys(this.skyline).sort()){
-        //     if(grain <= granularity && granularity % grain === 0){
-        //         for(let range of this.skyline[grain]){
-        //             if(range.start <= start && range.end >= end){
-        //                 let data = this.data[grain].filter(datum => datum >= start && datum <= end);
-        //                 return this.combine(data, grain, granularity);
-        //             }
-        //         }
-        //     }
-        // }
+    candle(date){
+        return this.nearestCandle(date).getTime();
     }
 
-    async query(start, end, granularity){
-        if(this.throttle){
-            // console.log('throttle killed it');
-            return;
-        }
+    nearestCandle(date){
+        return new Date(Math.floor(date.getTime() / this.granularity) * this.granularity);
+    }
 
-        this.throttle = true;
-        setTimeout(() => this.throttle = false, 1500);
+    first(){
+        let first = null;
 
-        // console.log(this.skyline[granularity]);
-
-        if(this.available(start, end, granularity)){
-            // console.log('fetched instead');
-            return this.fetch(start, end, granularity);
-        }
-
-        for(let grain of Object.keys(this.skyline).sort()){
-            if(grain <= granularity && granularity % grain === 0){
-                for(let range of this.skyline[grain]){
-                    if(range.start <= start && range.end >= end){
-                        let data = this.data[grain].filter(datum => datum >= start && datum <= end);
-                        return this.combine(data, grain, granularity);
-                    }
-                }
+        for(let datum of this.data.values()){
+            if(!first || first.date > datum.date){
+                first = datum;
             }
         }
 
-        //Calculate how many candles we need to fetch and perform the source requests
-        let candles = Math.ceil((end.getTime() - start.getTime()) / granularity);
-        let promises = [];
-
-        for(let i = 0; i < candles; i += this.maxCandlesFromRequest){
-            let frameStart = new Date(start.getTime() + (this.maxCandlesFromRequest * granularity * i));
-            let frameEnd = new Date(start.getTime() + (this.maxCandlesFromRequest * granularity));
-
-            if(frameEnd > end){
-                frameEnd = end;
-            }
-
-            promises.push(this.source({start: frameStart, end: frameEnd, granularity}));
-        }
-
-        let requestsFromSource = await Promise.all(promises);
-        let result = [];
-
-        for(let response of requestsFromSource){
-            response.sort((a, b) => a.date - b.date);
-            this.add(response, granularity);
-            result = result.concat(response);
-        }
-
-        return result;
+        return first;
     }
+
+    last(){
+        let last = null;
+
+        for(let datum of this.data.values()){
+            if(!last || last.date < datum.date){
+                last = datum;
+            }
+        }
+
+        return last;
+    }
+
+    // async query(start, end){
+    //     if(this.throttle){
+    //         return;
+    //     }
+    //
+    //     this.throttle = true;
+    //     setTimeout(() => this.throttle = false, 1500);
+    //
+    //
+    //     if(this.available(start, end)){
+    //         return this.fetch(start, end);
+    //     }
+    //
+    //     //Calculate how many candles we need to fetch and perform the source requests
+    //     let candles = Math.ceil((end.getTime() - start.getTime()) / granularity);
+    //     let promises = [];
+    //
+    //     for(let i = 0; i < candles; i += this.maxCandlesFromRequest){
+    //         let frameStart = new Date(start.getTime() + (this.maxCandlesFromRequest * granularity * i));
+    //         let frameEnd = new Date(start.getTime() + (this.maxCandlesFromRequest * granularity));
+    //
+    //         if(frameEnd > end){
+    //             frameEnd = end;
+    //         }
+    //
+    //         promises.push(this.source({start: frameStart, end: frameEnd, granularity}));
+    //     }
+    //
+    //     let requestsFromSource = await Promise.all(promises);
+    //     let result = [];
+    //
+    //     for(let response of requestsFromSource){
+    //         response.sort((a, b) => a.date - b.date);
+    //         this.add(response, granularity);
+    //         result = result.concat(response);
+    //     }
+    //
+    //     return result;
+    // }
 
     destroy(){
-        this.skyline = null;
         this.data = null;
-    }
-
-    onDidModifyData(callback){
-        return this.emitter.on('did-modify-data', callback);
     }
 }
