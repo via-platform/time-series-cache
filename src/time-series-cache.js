@@ -29,8 +29,8 @@ module.exports = class TimeSeriesCache {
                 value.close = data.price;
             }
 
-            value.high = Math.max(value.high, value.close);
-            value.low = Math.min(value.low, value.close);
+            value.high = value.high ? Math.max(value.high, value.close) : value.close;
+            value.low = value.low ? Math.min(value.low, value.close) : value.close;
             //TODO handle the volume adjustment
         }else{
             console.log(`There was no candle for date`, candle)
@@ -48,7 +48,7 @@ module.exports = class TimeSeriesCache {
         let endTime = this.nearestCandle(end);
 
         while(time <= endTime){
-            if(!this.data.has(time)){
+            if(!this.data.has(time.getTime())){
                 return false;
             }
 
