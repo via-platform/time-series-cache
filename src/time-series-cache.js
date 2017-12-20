@@ -102,46 +102,6 @@ module.exports = class TimeSeriesCache {
         return last;
     }
 
-    // async query(start, end){
-    //     if(this.throttle){
-    //         return;
-    //     }
-    //
-    //     this.throttle = true;
-    //     setTimeout(() => this.throttle = false, 1500);
-    //
-    //
-    //     if(this.available(start, end)){
-    //         return this.fetch(start, end);
-    //     }
-    //
-    //     //Calculate how many candles we need to fetch and perform the source requests
-    //     let candles = Math.ceil((end.getTime() - start.getTime()) / granularity);
-    //     let promises = [];
-    //
-    //     for(let i = 0; i < candles; i += this.maxCandlesFromRequest){
-    //         let frameStart = new Date(start.getTime() + (this.maxCandlesFromRequest * granularity * i));
-    //         let frameEnd = new Date(start.getTime() + (this.maxCandlesFromRequest * granularity));
-    //
-    //         if(frameEnd > end){
-    //             frameEnd = end;
-    //         }
-    //
-    //         promises.push(this.source({start: frameStart, end: frameEnd, granularity}));
-    //     }
-    //
-    //     let requestsFromSource = await Promise.all(promises);
-    //     let result = [];
-    //
-    //     for(let response of requestsFromSource){
-    //         response.sort((a, b) => a.date - b.date);
-    //         this.add(response, granularity);
-    //         result = result.concat(response);
-    //     }
-    //
-    //     return result;
-    // }
-
     destroy(){
         this.data = null;
     }
