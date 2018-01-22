@@ -33,7 +33,9 @@ module.exports = class TimeSeriesCache {
             value.low = value.low ? Math.min(value.low, value.close) : value.close;
             //TODO handle the volume adjustment
         }else{
-            console.log(`There was no candle for date`, candle)
+            if(via.devMode){
+                console.log(`There was no candle for date`, candle);
+            }
             //TODO possible save this ticker event for later application, once a candle is added for this date
             // this.add([{date: candle, low: current.price, high: current.price, open: current.price, close: current.price, volume: 0}]);
         }
@@ -56,6 +58,10 @@ module.exports = class TimeSeriesCache {
         }
 
         return true;
+    }
+
+    singleton(date){
+        return this.data.get(this.candle(date));
     }
 
     fetch(start, end){
