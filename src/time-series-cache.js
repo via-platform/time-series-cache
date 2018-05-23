@@ -4,6 +4,7 @@ module.exports = class TimeSeriesCache {
     constructor({granularity}){
         this.granularity = granularity;
         this.data = new Map();
+        this.skyline = [];
     }
 
     add(data){
@@ -20,10 +21,10 @@ module.exports = class TimeSeriesCache {
     }
 
     update(data){
-        let candle = this.candle(data.date);
+        const candle = this.candle(data.date);
 
         if(this.data.has(candle)){
-            let value = this.data.get(candle);
+            const value = this.data.get(candle);
 
             if(data.price){
                 value.close = data.price;
@@ -31,13 +32,11 @@ module.exports = class TimeSeriesCache {
 
             value.high = value.high ? Math.max(value.high, value.close) : value.close;
             value.low = value.low ? Math.min(value.low, value.close) : value.close;
-            //TODO handle the volume adjustment
+            value.volume += data.size;
+            value.trades += 1;
         }else{
-            if(via.devMode){
-                console.log(`There was no candle for date`, candle);
-            }
-            //TODO possible save this ticker event for later application, once a candle is added for this date
-            // this.add([{date: candle, low: current.price, high: current.price, open: current.price, close: current.price, volume: 0}]);
+            if(via.devMode) console.log(`There was no candle for date`, candle);
+            this.add({date: data.date, low: data.price, high: data.price, open: data.price, close: data.price, volume: data.size, trades: 1});
         }
     }
 
@@ -46,8 +45,8 @@ module.exports = class TimeSeriesCache {
     }
 
     available(start, end){
-        let time = this.nearestCandle(start);
-        let endTime = this.nearestCandle(end);
+        const time = this.nearestCandle(start);
+        const endTime = this.nearestCandle(end);
 
         while(time <= endTime){
             if(!this.data.has(time.getTime())){
@@ -65,9 +64,11 @@ module.exports = class TimeSeriesCache {
     }
 
     fetch(start, end){
-        let result = [];
+        const result = [];
 
-        for(let datum of this.data.values()){
+        //NOTE: If performance requires, this could be rewritten to iterate over all candles between `start` and `end`, rather than over `n`.
+
+        for(const datum of this.data.values()){
             if(datum.date >= start && datum.date <= end){
                 result.push(datum);
             }
@@ -87,7 +88,7 @@ module.exports = class TimeSeriesCache {
     first(){
         let first = null;
 
-        for(let datum of this.data.values()){
+        for(const datum of this.data.values()){
             if(!first || first.date > datum.date){
                 first = datum;
             }
@@ -99,7 +100,7 @@ module.exports = class TimeSeriesCache {
     last(){
         let last = null;
 
-        for(let datum of this.data.values()){
+        for(const datum of this.data.values()){
             if(!last || last.date < datum.date){
                 last = datum;
             }
