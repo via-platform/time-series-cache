@@ -1,6 +1,6 @@
 {
   "name": "time-series-cache",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Store, modify, and retrieve time series data in memory.",
   "main": "./src/time-series-cache",
   "scripts": {
