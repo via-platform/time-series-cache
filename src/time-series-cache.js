@@ -2,9 +2,12 @@ const _ = require('underscore-plus');
 
 module.exports = class TimeSeriesCache {
     constructor({granularity}){
+        if(!granularity || granularity <= 0){
+            throw new Error('You must set a millisecond granularity that is greater than zero.');
+        }
+
         this.granularity = granularity;
         this.data = new Map();
-        this.skyline = [];
     }
 
     add(data){
@@ -18,6 +21,32 @@ module.exports = class TimeSeriesCache {
 
         data.date = this.nearestCandle(data.date);
         this.data.set(data.date.getTime(), data);
+
+        //Set all following empty candles to the designated close price
+        //This method of setting empty candles is certainly not perfect, but it's good enough for now
+        if(data.trades_count){
+            let timestamp = data.date.getTime() + this.granularity;
+            let next = this.data.get(timestamp);
+
+            while(next && next.trades_count === 0){
+                next.high = data.close;
+                next.low = data.close;
+                next.open = data.close;
+                next.close = data.close;
+
+                timestamp += this.granularity;
+                next = this.data.get(timestamp);
+            }
+        }else{
+            let previous = this.data.get(data.date.getTime() - this.granularity);
+
+            if(previous){
+                data.high = previous.close;
+                data.low = previous.close;
+                data.open = previous.close;
+                data.close = previous.close;
+            }
+        }
     }
 
     update(data){
@@ -32,11 +61,21 @@ module.exports = class TimeSeriesCache {
 
             value.high = value.high ? Math.max(value.high, value.close) : value.close;
             value.low = value.low ? Math.min(value.low, value.close) : value.close;
-            value.volume += data.size;
-            value.trades += 1;
+            value.volume_traded += data.size;
+            value.volume_notional += (data.size * data.price);
+            value.trades_count += 1;
         }else{
             if(via.devMode) console.log(`There was no candle for date`, candle);
-            this.add({date: data.date, low: data.price, high: data.price, open: data.price, close: data.price, volume: data.size, trades: 1});
+            this.add({
+                date: data.date,
+                low: data.price,
+                high: data.price,
+                open: data.price,
+                close: data.price,
+                volume_traded: data.size,
+                volume_notional: (data.size * data.price),
+                trades_count: 1
+            });
         }
     }
 
@@ -45,15 +84,15 @@ module.exports = class TimeSeriesCache {
     }
 
     available(start, end){
-        const time = this.nearestCandle(start);
-        const endTime = this.nearestCandle(end);
+        const time = this.candle(start);
+        const endTime = this.candle(end);
 
         while(time <= endTime){
-            if(!this.data.has(time.getTime())){
+            if(!this.data.has(time)){
                 return false;
             }
 
-            time.setTime(time.getTime() + this.granularity);
+            time += this.granularity;
         }
 
         return true;
@@ -64,14 +103,18 @@ module.exports = class TimeSeriesCache {
     }
 
     fetch(start, end){
+        if(end < start) return [];
+
         const result = [];
+        const stop = this.candle(end);
+        let candle = this.candle(start);
 
-        //NOTE: If performance requires, this could be rewritten to iterate over all candles between `start` and `end`, rather than over `n`.
-
-        for(const datum of this.data.values()){
-            if(datum.date >= start && datum.date <= end){
-                result.push(datum);
+        while(candle <= stop){
+            if(this.data.has(candle)){
+                result.push(this.data.get(candle));
             }
+
+            candle += this.granularity;
         }
 
         return result;
