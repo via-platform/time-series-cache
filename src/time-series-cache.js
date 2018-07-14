@@ -84,7 +84,7 @@ module.exports = class TimeSeriesCache {
     }
 
     available(start, end){
-        const time = this.candle(start);
+        let time = this.candle(start);
         const endTime = this.candle(end);
 
         while(time <= endTime){
