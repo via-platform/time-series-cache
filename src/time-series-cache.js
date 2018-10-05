@@ -10,73 +10,22 @@ module.exports = class TimeSeriesCache {
         this.data = new Map();
     }
 
-    add(data){
-        if(Array.isArray(data)){
-            return data.forEach(item => this.add(item));
+    add(candle){
+        if(Array.isArray(candle)){
+            return candle.forEach(item => this.add(item));
         }
 
-        if(!data.date){
-            throw new Error('All data points must include a date property.');
+        if(!candle.time_period_start){
+            throw new Error('All candles must include a date property.');
         }
 
-        data.date = this.nearestCandle(data.date);
-        this.data.set(data.date.getTime(), data);
+        candle.time_period_start = new Date(candle.time_period_start);
+        candle.time_period_end = new Date(candle.time_period_end);
+        candle.time_open = new Date(candle.time_open);
+        candle.time_close = new Date(candle.time_close);
+        candle.profile = candle.profile.map(([level, buy, sell]) => [parseFloat(level), parseFloat(buy), parseFloat(sell)]);
 
-        //Set all following empty candles to the designated close price
-        //This method of setting empty candles is certainly not perfect, but it's good enough for now
-        if(data.trades_count){
-            let timestamp = data.date.getTime() + this.granularity;
-            let next = this.data.get(timestamp);
-
-            while(next && next.trades_count === 0){
-                next.high = data.close;
-                next.low = data.close;
-                next.open = data.close;
-                next.close = data.close;
-
-                timestamp += this.granularity;
-                next = this.data.get(timestamp);
-            }
-        }else{
-            let previous = this.data.get(data.date.getTime() - this.granularity);
-
-            if(previous){
-                data.high = previous.close;
-                data.low = previous.close;
-                data.open = previous.close;
-                data.close = previous.close;
-            }
-        }
-    }
-
-    update(data){
-        const candle = this.candle(data.date);
-
-        if(this.data.has(candle)){
-            const value = this.data.get(candle);
-
-            if(data.price){
-                value.close = data.price;
-            }
-
-            value.high = value.high ? Math.max(value.high, value.close) : value.close;
-            value.low = value.low ? Math.min(value.low, value.close) : value.close;
-            value.volume_traded += data.size;
-            value.volume_notional += (data.size * data.price);
-            value.trades_count += 1;
-        }else{
-            if(via.devMode) console.log(`There was no candle for date`, candle);
-            this.add({
-                date: data.date,
-                low: data.price,
-                high: data.price,
-                open: data.price,
-                close: data.price,
-                volume_traded: data.size,
-                volume_notional: (data.size * data.price),
-                trades_count: 1
-            });
-        }
+        this.data.set(candle.time_period_start.getTime(), candle);
     }
 
     has(date){
@@ -129,27 +78,15 @@ module.exports = class TimeSeriesCache {
     }
 
     first(){
-        let first = null;
-
-        for(const datum of this.data.values()){
-            if(!first || first.date > datum.date){
-                first = datum;
-            }
-        }
-
-        return first;
+        if(this.data.size === 0) return null;
+        const first = _.min(Array.from(this.data.keys()));
+        return this.data.get(first);
     }
 
     last(){
-        let last = null;
-
-        for(const datum of this.data.values()){
-            if(!last || last.date < datum.date){
-                last = datum;
-            }
-        }
-
-        return last;
+        if(this.data.size === 0) return null;
+        const last = _.max(Array.from(this.data.keys()));
+        return this.data.get(last);
     }
 
     destroy(){
